@@ -2,15 +2,15 @@ import rospy
 import cv2
 import numpy as np
 import pybullet as p
+import dlib
 from sensor_msgs.msg import Image, CameraInfo
 from tf.transformations import euler_from_quaternion, inverse_matrix, compose_matrix, quaternion_matrix, translation_matrix, translation_from_matrix
-#from uwds3_human_description.human_visual_model import HumanVisualModel
 from cv_bridge import CvBridge
 
 class HumanVisualModel(object):
-    FOV = 60.0 # human field of view
-    WIDTH = 90 # image width resolution for rendering
-    HEIGHT = 68  # image height resolution for rendering
+    FOV = 90.0 # human field of view
+    WIDTH = 480 # image width resolution for rendering
+    HEIGHT = 360  # image height resolution for rendering
     CLIPNEAR = 0.001 # clipnear
     CLIPFAR = 1e+3 # clipfar
     ASPECT = 1.333 # aspect ratio for rendering
@@ -49,8 +49,8 @@ class VisibilityMonitor(object):
         self.perspective_publisher = rospy.Publisher("perspective_viz", Image, queue_size=1)
 
     def estimate(self, t, q, camera_info, focus_distance=1.0, mode="MASK"):
-        detections = np.array([])
-
+        perspective_timer = cv2.getTickCount()
+        detections = []
         rot = quaternion_matrix(q)
         trans = translation_matrix(t)
         target = translation_matrix([0.0, 0.0, 1000.0])
@@ -60,39 +60,43 @@ class VisibilityMonitor(object):
                                                          HumanVisualModel.ASPECT,
                                                          HumanVisualModel.CLIPNEAR,
                                                          HumanVisualModel.CLIPFAR)
+        rendering_timer = cv2.getTickCount()
         camera_image = p.getCameraImage(HumanVisualModel.WIDTH,
                                         HumanVisualModel.HEIGHT,
                                         viewMatrix=view_matrix,
                                         renderer=p.ER_BULLET_HARDWARE_OPENGL,
                                         projectionMatrix=projection_matrix)
 
+        rendering_fps = cv2.getTickFrequency() / (cv2.getTickCount() - rendering_timer)
         depth_image = camera_image[3]
         mask_image = camera_image[4]
-        rgb_image = camera_image[2]
+        detection_timer = cv2.getTickCount()
 
-        # points = []
-        # center_u = int(HumanVisualModel.WIDTH/2.)
-        # center_v = int(HumanVisualModel.HEIGHT/2.)
-        # center_point = np.array(pinhole_camera_model.projectPixelTo3dRay((center_u, center_v))) * depth_map[center_v, center_u]
-        # viz_frame = np.zeros((HumanVisualModel.HEIGHT,HumanVisualModel.WIDTH,3), np.uint8)
-        # for v in range(HumanVisualModel.HEIGHT):
-        #     #v_norm = v / float(height)
-        #     for u in range(HumanVisualModel.WIDTH):
-        #         if u == center_u and v == center_v:
-        #             continue
-        #         object_id = camera_image[4][v, u]
-        #         pt3d = np.array(pinhole_camera_model.projectPixelTo3dRay((u, v))) * depth_map[v, u]
-        #         points.append(pt3d)
-        #         d = math.sqrt(np.sum((center_point - pt3d)**2)) # Euler distance
-        #         d_clipped = min(d, focus_distance)
-        #         d_norm = d_clipped / focus_distance
-        #         intensity = 1.0 - d_norm
-        #         (r, g, b) = colorsys.hsv_to_rgb(min(1.0-intensity, 0.8333), 1.0, 1.0)
-        #         viz_frame[v, u] = (b*255, g*255, r*255)
-        # print(viz_frame.shape)
-        # print(center_point)
-        # print(len(points))
+        unique, counts = np.unique(np.array(mask_image).flatten(), return_counts=True)
+        for sim_id, count in zip(unique, counts):
+            if sim_id > 0:
+                cv_mask = np.array(mask_image.copy())
+                cv_mask[cv_mask != sim_id] = 0
+                cv_mask[cv_mask == sim_id] = 255
+                detection = cv2.boundingRect(cv_mask.astype(np.uint8))
+                detections.append(detection)
+        detection_fps = cv2.getTickFrequency() / (cv2.getTickCount() - detection_timer)
+        perspective_fps = cv2.getTickFrequency() / (cv2.getTickCount() - perspective_timer)
 
-        viz_img_msg = self.bridge.cv2_to_imgmsg(np.array(depth_image).reshape(HumanVisualModel.HEIGHT,HumanVisualModel.WIDTH))
+        cv_image_array = np.array(depth_image, np.float32).reshape(HumanVisualModel.HEIGHT,HumanVisualModel.WIDTH)
+        cv_image_norm = cv2.normalize(cv_image_array, cv_image_array, 0, 1, cv2.NORM_MINMAX)*255
+        viz_frame = cv2.cvtColor(cv_image_norm.astype('uint8'), cv2.COLOR_GRAY2BGR)
+
+        rendering_fps_str = "Rendering fps: {:0.1f}hz".format(rendering_fps)
+        detection_fps_str = "Detection fps: {:0.1f}hz".format(detection_fps)
+        perspective_fps_str = "Perspective taking fps: {:0.1f}hz".format(perspective_fps)
+        cv2.putText(viz_frame, "Nb tracks: {}".format(len(detections)), (5, 25),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(viz_frame, rendering_fps_str, (5, 45),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(viz_frame, detection_fps_str, (5, 65),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(viz_frame, perspective_fps_str, (5, 85),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        for detection in detections:
+            x, y, w, h = detection
+            viz_frame = cv2.rectangle(viz_frame, (x,y), (x+w,y+h), (0,255,0), 2)
+        viz_img_msg = self.bridge.cv2_to_imgmsg(viz_frame)
         self.perspective_publisher.publish(viz_img_msg)
         return False, detections

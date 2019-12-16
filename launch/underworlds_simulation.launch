@@ -5,12 +5,14 @@
   <arg name="global_frame_id" default="odom"/>
   <arg name="base_frame_id" default="base_link"/>
   <arg name="robot_urdf_file_path" default="$(find uwds3_simulation)/models/cad_models/urdf/r2d2.urdf"/>
-  
+
   <!-- Camera parameters -->
   <arg name="rgb_image_topic" default="xtion/rgb/image_rect_color"/>
   <arg name="rgb_camera_info_topic" default="xtion/rgb/camera_info"/>
   <arg name="depth_image_topic" default="xtion/depth/image_rect"/>
   <arg name="depth_camera_info_topic" default="xtion/depth/camera_info"/>
+
+  <arg name="use_gui" default="true"/>
 
   <node name="uwds3_simulation" pkg="uwds3_simulation" type="uwds3_simulation_node.py" args="" output="screen" respawn="false">
     <rosparam subst_value="true">
@@ -24,6 +26,8 @@
       base_frame_id: $(arg base_frame_id)
       camera_frame_id: $(arg camera_frame_id)
       robot_urdf_file_path: $(arg robot_urdf_file_path)
+
+      use_gui: $(arg use_gui)
 
     </rosparam>
   </node>
