@@ -161,8 +161,8 @@ class UnderworldsSimulation(object):
         p.stepSimulation()
         for track in tracks_msg.changes.nodes:
             if track.has_camera is True and track.is_located is True:
-                position = track.position_with_cov.pose.pose.position
-                orientation = track.position_with_cov.pose.pose.orientation
+                position = track.pose_stamped.pose.pose.position
+                orientation = track.pose_stamped.pose.pose.orientation
                 t = [position.x, position.y, position.z]
                 q = [orientation.x, orientation.y, orientation.z, orientation.w]
                 self.perspective_monitor.estimate(t, q, track.camera)
