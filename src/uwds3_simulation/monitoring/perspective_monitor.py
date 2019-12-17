@@ -41,20 +41,22 @@ class HumanVisualModel(object):
         camera_info.P = list(P_matrix.flatten())
         return camera_info
 
-class VisibilityMonitor(object):
+
+class PerspectiveMonitor(object):
     def __init__(self, uwds_simulation):
         self.simulator = uwds_simulation
         self.filter_modes = ["MASK", "IMGFILTER", "ZFILTER", "ALLFILTER"]
         self.bridge = CvBridge()
         self.perspective_publisher = rospy.Publisher("perspective_viz", Image, queue_size=1)
 
-    def estimate(self, t, q, camera_info, focus_distance=1.0, mode="MASK"):
+    def estimate(self, t, q, camera_info, target_position=None, focus_distance=1.0, mode="MASK"):
         perspective_timer = cv2.getTickCount()
         detections = []
         rot = quaternion_matrix(q)
         trans = translation_matrix(t)
-        target = translation_matrix([0.0, 0.0, 1000.0])
-        target_position = translation_from_matrix(np.dot(np.dot(trans, rot), target))
+        if target_position is None:
+            target = translation_matrix([0.0, 0.0, 1000.0])
+            target_position = translation_from_matrix(np.dot(np.dot(trans, rot), target))
         view_matrix = p.computeViewMatrix(t, target_position, [0, 0, 1])
         projection_matrix = p.computeProjectionMatrixFOV(HumanVisualModel.FOV,
                                                          HumanVisualModel.ASPECT,

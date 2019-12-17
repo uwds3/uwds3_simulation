@@ -2,9 +2,12 @@
 <launch>
 
   <arg name="camera_frame_id" default="camera_link"/>
-  <arg name="global_frame_id" default="odom"/>
+  <arg name="global_frame_id" default="map"/>
   <arg name="base_frame_id" default="base_link"/>
+
   <arg name="robot_urdf_file_path" default="$(find uwds3_simulation)/models/cad_models/urdf/r2d2.urdf"/>
+  <arg name="env_urdf_file_path" default="$(find uwds3_simulation)/models/cad_models/urdf/adream_empty.urdf"/>
+  <arg name="cad_models_additional_search_path" default="$(find uwds3_simulation)/models/cad_models"/>
 
   <!-- Camera parameters -->
   <arg name="rgb_image_topic" default="xtion/rgb/image_rect_color"/>
@@ -25,7 +28,10 @@
       global_frame_id: $(arg global_frame_id)
       base_frame_id: $(arg base_frame_id)
       camera_frame_id: $(arg camera_frame_id)
+
       robot_urdf_file_path: $(arg robot_urdf_file_path)
+      env_urdf_file_path: $(arg env_urdf_file_path)
+      cad_models_additional_search_path: $(arg cad_models_additional_search_path)
 
       use_gui: $(arg use_gui)
 

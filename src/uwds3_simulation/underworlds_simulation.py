@@ -1,14 +1,21 @@
 import rospy
 import pybullet as p
-import pybullet_data
 import numpy as np
 from proprioception.internal_simulator import InternalSimulator
-from monitoring.visibility_monitor import VisibilityMonitor
+from monitoring.perspective_monitor import PerspectiveMonitor
 import tf2_ros
 import message_filters
 from sensor_msgs.msg import Image
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
 from uwds3_msgs.msg import SceneChangesStamped
+
+
+class PrimitiveShape(object):
+    BOX = 0
+    SPHERE = 1
+    CYLINDER = 2
+    CAPSULE = 3
+
 
 class UnderworldsSimulation(object):
     def __init__(self):
@@ -18,6 +25,9 @@ class UnderworldsSimulation(object):
 
         self.base_frame_id = rospy.get_param("~base_frame_id", "base_footprint")
         self.global_frame_id = rospy.get_param("~global_frame_id", "odom")
+
+        self.env_urdf_file_path = rospy.get_param("~env_urdf_file_path", "")
+        self.cad_models_additional_search_path = rospy.get_param("~cad_models_additional_search_path", "")
 
         self.entity_id_map = {}
         self.reverse_entity_id_map = {}
@@ -32,9 +42,12 @@ class UnderworldsSimulation(object):
             self.client_simulator_id = p.connect(p.GUI)
         else:
             self.client_simulator_id = p.connect(p.DIRECT)
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
-        self.load_urdf(self.global_frame_id, "plane.urdf", [0,0,0], [0,0,0,1])
+        if self.cad_models_additional_search_path != "":
+            p.setAdditionalSearchPath(self.cad_models_additional_search_path)
+
+        if self.env_urdf_file_path != "":
+            self.load_urdf(self.global_frame_id, self.env_urdf_file_path, [0,0,0], [0,0,0,1])
 
         p.setGravity(0, 0, -10)
         p.setRealTimeSimulation(0)
@@ -54,7 +67,7 @@ class UnderworldsSimulation(object):
 
         self.internal_simulator = InternalSimulator(self)
 
-        self.visibility_monitor = VisibilityMonitor(self)
+        self.perspective_monitor = PerspectiveMonitor(self)
 
         self.use_depth = rospy.get_param("~use_depth", False)
 
@@ -152,4 +165,4 @@ class UnderworldsSimulation(object):
                 orientation = track.position_with_cov.pose.pose.orientation
                 t = [position.x, position.y, position.z]
                 q = [orientation.x, orientation.y, orientation.z, orientation.w]
-                self.visibility_monitor.estimate(t, q, track.camera)
+                self.perspective_monitor.estimate(t, q, track.camera)

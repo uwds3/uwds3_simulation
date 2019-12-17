@@ -2,7 +2,7 @@
 <launch>
 
   <arg name="camera_frame_id" default="camera_link"/>
-  <arg name="global_frame_id" default="odom"/>
+  <arg name="global_frame_id" default="map"/>
   <arg name="base_frame_id" default=" base_link"/>
 
   <param name="robot_description" textfile="$(find uwds3_simulation)/models/cad_models/urdf/r2d2.urdf"/>
@@ -11,6 +11,7 @@
   <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" args="_use_gui:=true"/>
 
   <node name="camera_optical_frame_publisher" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0 -1.57 0 -1.57 $(arg camera_frame_id) optical_frame_$(arg camera_frame_id)"/>
-  <node name="odom_frame_publisher" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0.47 0 0 0 $(arg global_frame_id) $(arg base_frame_id)"/>
+  <node name="odom2base_publisher" pkg="tf2_ros" type="static_transform_publisher" args="0 0 0.47 0 0 0 odom $(arg base_frame_id)"/>
+  <node name="map2odom_publisher" pkg="tf2_ros" type="static_transform_publisher" args="-5 16 0 1.57 0 0 $(arg global_frame_id) odom"/>
 
 </launch>
