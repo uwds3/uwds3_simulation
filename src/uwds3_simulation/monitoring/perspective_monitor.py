@@ -80,7 +80,8 @@ class PerspectiveMonitor(object):
                 cv_mask = np.array(mask_image.copy())
                 cv_mask[cv_mask != sim_id] = 0
                 cv_mask[cv_mask == sim_id] = 255
-                detection = cv2.boundingRect(cv_mask.astype(np.uint8))
+                x, y, w, h = cv2.boundingRect(cv_mask.astype(np.uint8))
+                detection = x, y, w, h, sim_id
                 detections.append(detection)
         detection_fps = cv2.getTickFrequency() / (cv2.getTickCount() - detection_timer)
         perspective_fps = cv2.getTickFrequency() / (cv2.getTickCount() - perspective_timer)
@@ -97,8 +98,9 @@ class PerspectiveMonitor(object):
         cv2.putText(viz_frame, detection_fps_str, (5, 65),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         cv2.putText(viz_frame, perspective_fps_str, (5, 85),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
         for detection in detections:
-            x, y, w, h = detection
+            x, y, w, h, sim_id = detection
             viz_frame = cv2.rectangle(viz_frame, (x,y), (x+w,y+h), (0,255,0), 2)
+            cv2.putText(viz_frame, self.simulator.reverse_entity_id_map[sim_id], (x+5, y+25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250, 0, 250), 1)
         viz_img_msg = self.bridge.cv2_to_imgmsg(viz_frame)
         self.perspective_publisher.publish(viz_img_msg)
         return False, detections

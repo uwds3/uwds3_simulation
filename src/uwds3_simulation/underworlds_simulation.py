@@ -8,6 +8,7 @@ import message_filters
 from sensor_msgs.msg import Image
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
 from uwds3_msgs.msg import SceneChangesStamped
+import yaml
 
 
 class PrimitiveShape(object):
@@ -29,6 +30,8 @@ class UnderworldsSimulation(object):
         self.env_urdf_file_path = rospy.get_param("~env_urdf_file_path", "")
         self.cad_models_additional_search_path = rospy.get_param("~cad_models_additional_search_path", "")
 
+        self.static_entities_config_filename = rospy.get_param("~static_entities_config_filename", "")
+
         self.entity_id_map = {}
         self.reverse_entity_id_map = {}
 
@@ -48,6 +51,19 @@ class UnderworldsSimulation(object):
 
         if self.env_urdf_file_path != "":
             self.load_urdf(self.global_frame_id, self.env_urdf_file_path, [0,0,0], [0,0,0,1])
+
+        if self.static_entities_config_filename != "":
+            with open(self.static_entities_config_filename, 'r') as stream:
+                static_entities = yaml.safe_load(stream)
+                for entity in static_entities:
+                    start_position = [entity["position"]["x"],
+                                      entity["position"]["y"],
+                                      entity["position"]["z"]]
+                    start_orientation = [entity["orientation"]["x"],
+                                         entity["orientation"]["y"],
+                                         entity["orientation"]["z"],
+                                         entity["orientation"]["w"]]
+                    self.load_urdf(entity["label"], entity["file"], start_position, start_orientation)
 
         p.setGravity(0, 0, -10)
         p.setRealTimeSimulation(0)

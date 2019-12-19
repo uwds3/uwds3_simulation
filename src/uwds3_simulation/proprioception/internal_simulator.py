@@ -27,17 +27,17 @@ class InternalSimulator(object):
             if self.robot_loaded is False:
                 try:
                     self.robot_loaded = True
-                    self.simulator.load_urdf(self.base_frame_id, self.robot_urdf_file_path, t, q)
+                    self.simulator.load_urdf("myself", self.robot_urdf_file_path, t, q)
                 except Exception as e:
                     rospy.logwarn("[simulation] Exception occured: {}".format(e))
             try:
-                self.simulator.update_entity(self.base_frame_id, t, q)
+                self.simulator.update_entity("myself", t, q)
             except Exception as e:
                 rospy.logwarn("[simulation] Exception occured: {}".format(e))
         if self.robot_loaded is True:
             joint_indices = []
             target_positions = []
-            base_link_sim_id = self.simulator.entity_id_map[self.simulator.base_frame_id]
+            base_link_sim_id = self.simulator.entity_id_map["myself"]
             for joint_state_index, joint_name in enumerate(joint_states_msg.name):
                 joint_sim_index = self.simulator.joint_id_map[base_link_sim_id][joint_name]
                 info = p.getJointInfo(base_link_sim_id, joint_sim_index, physicsClientId=self.client_simulator_id)

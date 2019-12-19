@@ -5,9 +5,11 @@
   <arg name="global_frame_id" default="map"/>
   <arg name="base_frame_id" default="base_link"/>
 
-  <arg name="robot_urdf_file_path" default="$(find uwds3_simulation)/models/cad_models/urdf/r2d2.urdf"/>
-  <arg name="env_urdf_file_path" default="$(find uwds3_simulation)/models/cad_models/urdf/adream_empty.urdf"/>
-  <arg name="cad_models_additional_search_path" default="$(find uwds3_simulation)/models/cad_models"/>
+  <arg name="robot_urdf_file_path" default="$(find adream_simulation)/models/cad_models/urdf/r2d2.urdf"/>
+  <arg name="env_urdf_file_path" default="$(find adream_simulation)/models/cad_models/urdf/adream_empty.urdf"/>
+  <arg name="cad_models_additional_search_path" default="$(find adream_simulation)/models/cad_models"/>
+
+  <arg name="static_entities_config_filename" default="$(find adream_simulation)/config/environment/adream_static_entities.yaml"/>
 
   <!-- Camera parameters -->
   <arg name="rgb_image_topic" default="xtion/rgb/image_rect_color"/>
@@ -32,6 +34,8 @@
       robot_urdf_file_path: $(arg robot_urdf_file_path)
       env_urdf_file_path: $(arg env_urdf_file_path)
       cad_models_additional_search_path: $(arg cad_models_additional_search_path)
+
+      static_entities_config_filename: $(arg static_entities_config_filename)
 
       use_gui: $(arg use_gui)
 
