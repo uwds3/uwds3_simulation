@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <launch>
 
+  <!-- General parameters -->
   <arg name="camera_frame_id" default="camera_link"/>
   <arg name="global_frame_id" default="map"/>
   <arg name="base_frame_id" default="base_link"/>
 
+  <!-- 3D models parameters -->
   <arg name="robot_urdf_file_path" default="$(find adream_simulation)/models/cad_models/urdf/r2d2.urdf"/>
   <arg name="env_urdf_file_path" default="$(find adream_simulation)/models/cad_models/urdf/adream_empty.urdf"/>
   <arg name="cad_models_additional_search_path" default="$(find adream_simulation)/models/cad_models"/>
-
   <arg name="static_entities_config_filename" default="$(find adream_simulation)/config/environment/adream_static_entities.yaml"/>
 
   <!-- Camera parameters -->
@@ -17,6 +18,7 @@
   <arg name="depth_image_topic" default="xtion/depth/image_rect"/>
   <arg name="depth_camera_info_topic" default="xtion/depth/camera_info"/>
 
+  <!-- Other parameters -->
   <arg name="use_gui" default="true"/>
 
   <node name="uwds3_simulation" pkg="uwds3_simulation" type="uwds3_simulation_node.py" args="" output="screen" respawn="false">

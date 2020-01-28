@@ -7,7 +7,7 @@ import tf2_ros
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
 
 
-class InternalSimulator(object):
+class JointStatesListener(object):
     def __init__(self, uwds_simulation):
 
         self.robot_loaded = False

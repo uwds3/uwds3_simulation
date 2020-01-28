@@ -10,6 +10,7 @@ project(uwds3_simulation)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   uwds3_msgs
+  visualization_msgs
 )
 
 ## System dependencies are found with CMake's conventions

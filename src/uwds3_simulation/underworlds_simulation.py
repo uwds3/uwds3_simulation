@@ -1,21 +1,16 @@
 import rospy
 import pybullet as p
 import numpy as np
-from proprioception.internal_simulator import InternalSimulator
-from monitoring.perspective_monitor import PerspectiveMonitor
+from proprioception.joint_states_listener import JointStatesListener
+from estimation.perspective_estimator import PerspectiveEstimator
 import tf2_ros
 import message_filters
 from sensor_msgs.msg import Image
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
-from uwds3_msgs.msg import SceneChangesStamped
+from uwds3_msgs.msg import SceneChangesStamped, PrimitiveShape
+from visualization_msgs.msg import MarkerArray, Marker
+from tf.transformations import translation_matrix, quaternion_matrix, quaternion_from_matrix, translation_from_matrix, quaternion_from_euler
 import yaml
-
-
-class PrimitiveShape(object):
-    BOX = 0
-    SPHERE = 1
-    CYLINDER = 2
-    CAPSULE = 3
 
 
 class UnderworldsSimulation(object):
@@ -40,6 +35,8 @@ class UnderworldsSimulation(object):
 
         self.constraint_id_map = {}
 
+        self.markers_id_map = {}
+
         self.use_gui = rospy.get_param("~use_gui", True)
         if self.use_gui is True:
             self.client_simulator_id = p.connect(p.GUI)
@@ -61,9 +58,12 @@ class UnderworldsSimulation(object):
                                       entity["position"]["z"]]
                     start_orientation = [entity["orientation"]["x"],
                                          entity["orientation"]["y"],
-                                         entity["orientation"]["z"],
-                                         entity["orientation"]["w"]]
-                    self.load_urdf(entity["label"], entity["file"], start_position, start_orientation)
+                                         entity["orientation"]["z"]]
+                    start_orientation = quaternion_from_euler(entity["orientation"]["x"],
+                                                              entity["orientation"]["y"],
+                                                              entity["orientation"]["z"],
+                                                              'rxyz')
+                    self.load_urdf(entity["id"], entity["file"], start_position, start_orientation)
 
         p.setGravity(0, 0, -10)
         p.setRealTimeSimulation(0)
@@ -81,11 +81,16 @@ class UnderworldsSimulation(object):
 
         self.robot_urdf_file_path = rospy.get_param("~robot_urdf_file_path", "r2d2.urdf")
 
-        self.internal_simulator = InternalSimulator(self)
+        self.joint_states_listener = JointStatesListener(self)
 
-        self.perspective_monitor = PerspectiveMonitor(self)
+        self.perspective_estimator = PerspectiveEstimator(self)
 
         self.use_depth = rospy.get_param("~use_depth", False)
+
+        self.publish_markers = rospy.get_param("publish_markers", True)
+
+        if self.publish_markers is True:
+            self.marker_publisher = rospy.Publisher("internal_simulation_viz", MarkerArray, queue_size=1)
 
         if self.use_depth is True:
             rospy.loginfo("[simulation] Subscribing to '/{}' topic...".format(self.tracks_topic))
@@ -108,6 +113,9 @@ class UnderworldsSimulation(object):
 
             self.sync = message_filters.ApproximateTimeSynchronizer([self.tracks_sub, self.rgb_image_sub], 10, 0.1, allow_headerless=True)
             self.sync.registerCallback(self.observation_callback)
+
+        if self.publish_markers is True:
+            self.simulation_timer = rospy.Timer(rospy.Duration(1.0/24.0), self.visualization_callback)
 
     def load_urdf(self, id, filename, t, q, remove_friction=False):
         try:
@@ -163,6 +171,32 @@ class UnderworldsSimulation(object):
             raise ValueError("Constraint for entity <{}> not created".format(id))
         p.removeConstraint(self.constraint_id[id])
 
+    def add_shape(self, track):
+        if track.has_shape is True:
+            if track.shape == PrimitiveShape.CYLINDER:
+                track.shape
+                position = []
+                orientation = []
+                visual_shape_id = p.createVisualShape(p.GEOM_CYLINDER,
+                                                      radius=track.shape.dimensions[0],
+                                                      length=track.shape.dimensions[1])
+                collision_shape_id = p.createCollisionShape(p.GEOM_CYLINDER,
+                                                            radius=track.shape.dimensions[0],
+                                                            length=track.shape.dimensions[1])
+                entity_id = p.createMultiBody(baseCollisionShapeIndex=collision_shape_id,
+                                              baseVisualShapeIndex=visual_shape_id,
+                                              basePosition=position,
+                                              baseOrientation=orientation,
+                                              flags=p.URDF_ENABLE_SLEEPING or p.URDF_ENABLE_CACHED_GRAPHICS_SHAPES)
+                if entity_id >= 0:
+                    self.entity_id_map[track.id] = entity_id
+                    self.reverse_entity_id_map[entity_id] = track.id
+            else:
+                raise NotImplementedError("Only cylinder shapes for unknown objects supported at the moment.")
+
+    def remove_shape(self, track):
+        pass
+
     def update_entity(self, id, t, q):
         if id not in self.entity_id_map:
             raise ValueError("Entity <{}> is not loaded into the simulator".format(id))
@@ -173,6 +207,101 @@ class UnderworldsSimulation(object):
         if update_position is True or update_orientation is True:
             p.resetBasePositionAndOrientation(base_link_sim_id, t, q, physicsClientId=self.client_simulator_id)
 
+    def publish_marker_array(self):
+        marker_array = MarkerArray()
+        marker_array.markers = []
+        now = rospy.Time()
+        for sim_id in range(0, p.getNumBodies()):
+            visual_shapes = p.getVisualShapeData(sim_id)
+
+            for shape in visual_shapes:
+                marker = Marker()
+                entity_id = shape[0]
+                link_id = shape[1]
+                type = shape[2]
+                dimensions = shape[3]
+                mesh_file_path = shape[4]
+                position = shape[5]
+                orientation = shape[6]
+                rgba_color = shape[7]
+
+                if link_id != -1:
+                    link_state = p.getLinkState(sim_id, link_id)
+                    t_link = link_state[0]
+                    q_link = link_state[1]
+                    t_inertial = link_state[2]
+                    q_inertial = link_state[3]
+
+                    tf_world_link = np.dot(translation_matrix(t_link), quaternion_matrix(q_link))
+                    tf_inertial_link = np.dot(translation_matrix(t_inertial), quaternion_matrix(q_inertial))
+                    world_transform = np.dot(tf_world_link, np.linalg.inv(tf_inertial_link))
+                else:
+                    t_link, q_link = p.getBasePositionAndOrientation(sim_id)
+                    world_transform = np.dot(translation_matrix(t_link), quaternion_matrix(q_link))
+
+                marker.header.frame_id = self.global_frame_id
+                marker.header.stamp = now
+                marker.id = entity_id + (link_id + 1) << 24 # same id convention than bullet
+                marker.action = Marker.MODIFY
+                marker.ns = self.reverse_entity_id_map[sim_id]
+
+                trans_shape = np.dot(translation_matrix(position), quaternion_matrix(orientation))
+                shape_transform = np.dot(world_transform, trans_shape)
+                position = translation_from_matrix(shape_transform)
+                orientation = quaternion_from_matrix(shape_transform)
+
+                marker.pose.position.x = position[0]
+                marker.pose.position.y = position[1]
+                marker.pose.position.z = position[2]
+
+                marker.pose.orientation.x = orientation[0]
+                marker.pose.orientation.y = orientation[1]
+                marker.pose.orientation.z = orientation[2]
+                marker.pose.orientation.w = orientation[3]
+
+                if len(rgba_color) > 0:
+                    marker.color.r = rgba_color[0]
+                    marker.color.g = rgba_color[1]
+                    marker.color.b = rgba_color[2]
+                    marker.color.a = rgba_color[3]
+
+                if type == p.GEOM_SPHERE:
+                    marker.type = Marker.SPHERE
+                    marker.scale.x = dimensions[0]*2.0
+                    marker.scale.y = dimensions[0]*2.0
+                    marker.scale.z = dimensions[0]*2.0
+                elif type == p.GEOM_BOX:
+                    marker.type = Marker.CUBE
+                    marker.scale.x = dimensions[0]
+                    marker.scale.y = dimensions[1]
+                    marker.scale.z = dimensions[2]
+                elif type == p.GEOM_CAPSULE:
+                    marker.type = Marker.SPHERE
+                elif type == p.GEOM_CYLINDER:
+                    marker.type = Marker.CYLINDER
+                    marker.scale.x = dimensions[1]*2.0
+                    marker.scale.y = dimensions[1]*2.0
+                    marker.scale.z = dimensions[0]
+                elif type == p.GEOM_PLANE:
+                    marker.type = Marker.CUBE
+                    marker.scale.x = dimensions[0]
+                    marker.scale.y = dimensions[1]
+                    marker.scale.z = 0.0001
+                elif type == p.GEOM_MESH:
+                    marker.type = Marker.MESH_RESOURCE
+                    marker.mesh_resource = "file://"+mesh_file_path
+                    marker.scale.x = dimensions[0]
+                    marker.scale.y = dimensions[1]
+                    marker.scale.z = dimensions[2]
+                    marker.mesh_use_embedded_materials = True
+                else:
+                    raise NotImplementedError
+
+                marker.lifetime = rospy.Duration(1.0)
+
+                marker_array.markers.append(marker)
+        self.marker_publisher.publish(marker_array)
+
     def observation_callback(self, tracks_msg, bgr_image_msg, depth_image_msg=None):
         p.stepSimulation()
         for track in tracks_msg.changes.nodes:
@@ -181,4 +310,7 @@ class UnderworldsSimulation(object):
                 orientation = track.pose_stamped.pose.pose.orientation
                 t = [position.x, position.y, position.z]
                 q = [orientation.x, orientation.y, orientation.z, orientation.w]
-                self.perspective_monitor.estimate(t, q, track.camera)
+                self.perspective_estimator.estimate(t, q, track.camera)
+
+    def visualization_callback(self, event):
+        self.publish_marker_array()

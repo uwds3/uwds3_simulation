@@ -55,7 +55,7 @@
   <build_export_depend>uwds3_msgs</build_export_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>uwds3_msgs</exec_depend>
-
+  <depend>visualization_msgs</depend>
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
