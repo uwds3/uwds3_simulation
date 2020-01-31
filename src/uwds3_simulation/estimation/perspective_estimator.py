@@ -97,7 +97,10 @@ class PerspectiveEstimator(object):
 
                 visible_area = w*h+1
                 screen_area = rendered_width*rendered_height+1
-                confidence = visible_area/float(screen_area-visible_area)
+                if screen_area-visible_area == 0:
+                    confidence = 1.0
+                else:
+                    confidence = visible_area/float(screen_area-visible_area)
                 #TODO compute occlusion score as a ratio between visible 2d bbox and projected 2d bbox areas
                 depth = real_depth_image[int(ymin+h/2.0)][int(xmin+w/2.0)]
 
