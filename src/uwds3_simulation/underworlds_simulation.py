@@ -6,6 +6,7 @@ from estimation.perspective_estimator import PerspectiveEstimator
 import tf2_ros
 import message_filters
 from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
 from uwds3_msgs.msg import SceneChangesStamped, PrimitiveShape
 from visualization_msgs.msg import MarkerArray, Marker
@@ -26,6 +27,8 @@ class UnderworldsSimulation(object):
         self.cad_models_additional_search_path = rospy.get_param("~cad_models_additional_search_path", "")
 
         self.static_entities_config_filename = rospy.get_param("~static_entities_config_filename", "")
+
+        self.bridge = CvBridge()
 
         self.entity_id_map = {}
         self.reverse_entity_id_map = {}
@@ -88,6 +91,10 @@ class UnderworldsSimulation(object):
         self.use_depth = rospy.get_param("~use_depth", False)
 
         self.publish_markers = rospy.get_param("publish_markers", True)
+
+        self.publish_perspectives = rospy.get_param("publish_perspectives", True)
+        if self.publish_perspectives is True:
+            self.perspective_publisher = rospy.Publisher("perspective_viz", Image, queue_size=1)
 
         if self.publish_markers is True:
             self.marker_publisher = rospy.Publisher("internal_simulation_viz", MarkerArray, queue_size=1)
@@ -310,7 +317,9 @@ class UnderworldsSimulation(object):
                 orientation = track.pose_stamped.pose.pose.orientation
                 t = [position.x, position.y, position.z]
                 q = [orientation.x, orientation.y, orientation.z, orientation.w]
-                self.perspective_estimator.estimate(t, q, track.camera)
+                rgb_image, depth_image, detections, viz_frame = self.perspective_estimator.estimate(t, q, track.camera)
+                viz_img_msg = self.bridge.cv2_to_imgmsg(viz_frame)
+                self.perspective_publisher.publish(viz_img_msg)
 
     def visualization_callback(self, event):
         self.publish_marker_array()

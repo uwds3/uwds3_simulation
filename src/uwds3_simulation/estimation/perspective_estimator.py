@@ -3,9 +3,8 @@ import cv2
 import numpy as np
 import pybullet as p
 from pyuwds3.types.detection import Detection
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import CameraInfo
 from tf.transformations import quaternion_matrix, translation_matrix, translation_from_matrix
-from cv_bridge import CvBridge
 
 
 class HumanVisualModel(object):
@@ -46,11 +45,8 @@ class HumanVisualModel(object):
 class PerspectiveEstimator(object):
     def __init__(self, uwds_simulation):
         self.simulator = uwds_simulation
-        self.filter_modes = ["MASK", "IMGFILTER", "ZFILTER", "ALLFILTER"]
-        self.bridge = CvBridge()
-        self.perspective_publisher = rospy.Publisher("perspective_viz", Image, queue_size=1)
 
-    def estimate(self, t, q, camera_info, target_position=None, focus_distance=1.0, occlusion_treshold=0.01, mode="MASK"):
+    def estimate(self, t, q, camera_info, target_position=None, focus_distance=1.0, occlusion_treshold=0.01, output_viz=True):
         perspective_timer = cv2.getTickCount()
         visible_detections = []
         rot = quaternion_matrix(q)
@@ -77,7 +73,7 @@ class PerspectiveEstimator(object):
         camera_image = p.getCameraImage(rendered_width,
                                         rendered_height,
                                         viewMatrix=view_matrix,
-                                        # renderer=p.ER_BULLET_HARDWARE_OPENGL,
+                                        renderer=p.ER_BULLET_HARDWARE_OPENGL,
                                         projectionMatrix=projection_matrix)
 
         rgb_image = cv2.resize(np.array(camera_image[2]), (width, height))
@@ -122,14 +118,16 @@ class PerspectiveEstimator(object):
 
         perspective_fps = cv2.getTickFrequency() / (cv2.getTickCount() - perspective_timer)
 
-        viz_frame = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+        if output_viz is True:
+            viz_frame = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
 
-        cv2.rectangle(viz_frame, (0, 0), (250, 40), (200, 200, 200), -1)
-        perspective_fps_str = "Perspective taking fps: {:0.1f}hz".format(perspective_fps)
-        cv2.putText(viz_frame, "Nb detections: {}".format(len(visible_detections)), (5, 15),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        cv2.putText(viz_frame, perspective_fps_str, (5, 30),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-        for detection in visible_detections:
-            detection.draw(viz_frame, (0, 200, 0))
-        viz_img_msg = self.bridge.cv2_to_imgmsg(viz_frame)
-        self.perspective_publisher.publish(viz_img_msg)
-        return False, visible_detections
+            cv2.rectangle(viz_frame, (0, 0), (250, 40), (200, 200, 200), -1)
+            perspective_fps_str = "Perspective taking fps: {:0.1f}hz".format(perspective_fps)
+            cv2.putText(viz_frame, "Nb detections: {}".format(len(visible_detections)), (5, 15),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            cv2.putText(viz_frame, perspective_fps_str, (5, 30),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            for detection in visible_detections:
+                detection.draw(viz_frame, (0, 200, 0))
+
+            return rgb_image, real_depth_image, visible_detections, viz_frame
+        else:
+            return rgb_image, real_depth_image, visible_detections
