@@ -4,9 +4,8 @@ import numpy as np
 import pybullet as p
 from pyuwds3.types.detection import Detection
 from sensor_msgs.msg import Image, CameraInfo
-from tf.transformations import euler_from_quaternion, inverse_matrix, compose_matrix, quaternion_matrix, translation_matrix, translation_from_matrix
+from tf.transformations import quaternion_matrix, translation_matrix, translation_from_matrix
 from cv_bridge import CvBridge
-from image_geometry import PinholeCameraModel
 
 
 class HumanVisualModel(object):
@@ -69,30 +68,29 @@ class PerspectiveEstimator(object):
                                                          HumanVisualModel.CLIPNEAR,
                                                          HumanVisualModel.CLIPFAR)
 
-        camera_image = p.getCameraImage(HumanVisualModel.WIDTH,
-                                        HumanVisualModel.HEIGHT,
+        rendered_width = int(width/3.0)
+        rendered_height = int(height/3.0)
+
+        width_ratio = width/rendered_width
+        height_ratio = height/rendered_height
+
+        camera_image = p.getCameraImage(rendered_width,
+                                        rendered_height,
                                         viewMatrix=view_matrix,
-                                        renderer=p.ER_BULLET_HARDWARE_OPENGL,
+                                        # renderer=p.ER_BULLET_HARDWARE_OPENGL,
                                         projectionMatrix=projection_matrix)
 
-        rospy.logwarn(camera_image[2][2:].shape)
+        rgb_image = cv2.resize(np.array(camera_image[2]), (width, height))
 
-        rgb_image = np.array(camera_image[2])
+        depth_image = np.array(camera_image[3], np.float32).reshape((rendered_height, rendered_width))
 
-        #red_image = np.array(camera_image[2][0]).reshape(HumanVisualModel.HEIGHT, HumanVisualModel.WIDTH)
-        # green_image = np.array(camera_image[2][1]).reshape(HumanVisualModel.HEIGHT, HumanVisualModel.WIDTH)
-        # blue_image = np.array(camera_image[2][2]).reshape(HumanVisualModel.HEIGHT, HumanVisualModel.WIDTH)
-        # rgb_image = np.array([red_image, green_image, blue_image])
-
-        depth_image = np.array(camera_image[3], np.float32).reshape(HumanVisualModel.HEIGHT, HumanVisualModel.WIDTH)
         far = HumanVisualModel.CLIPFAR
         near = HumanVisualModel.CLIPNEAR
         real_depth_image = far * near / (far - (far - near) * depth_image)
+
         mask_image = camera_image[4]
 
         unique, counts = np.unique(np.array(mask_image).flatten(), return_counts=True)
-
-        #camera = PinholeCameraModel().fromCameraInfo(camera_info)
 
         for sim_id, count in zip(unique, counts):
             if sim_id > 0:
@@ -100,29 +98,22 @@ class PerspectiveEstimator(object):
                 cv_mask[cv_mask != sim_id] = 0
                 cv_mask[cv_mask == sim_id] = 255
                 xmin, ymin, w, h = cv2.boundingRect(cv_mask.astype(np.uint8))
+
                 visible_area = w*h+1
-                screen_area = width*height+1
-                confidence = visible_area/float(screen_area) #TODO compute occlusion score as a ratio between visible 2d bbox and projected 2d bbox areas
+                screen_area = rendered_width*rendered_height+1
+                confidence = visible_area/float(screen_area-visible_area)
+                #TODO compute occlusion score as a ratio between visible 2d bbox and projected 2d bbox areas
                 depth = real_depth_image[int(ymin+h/2.0)][int(xmin+w/2.0)]
+
+                xmin = int(xmin*width_ratio)
+                ymin = int(ymin*height_ratio)
+                w = int(w*width_ratio)
+                h = int(h*height_ratio)
+
                 id = self.simulator.reverse_entity_id_map[sim_id]
                 if confidence > occlusion_treshold:
                     det = Detection(int(xmin), int(ymin), int(xmin+w), int(ymin+h), id, confidence, depth=depth)
                     visible_detections.append(det)
-                #aabb_sim = p.getAABB(sim_id)
-                #aabb_min = aabb_sim[0]
-                #aabb_max = aabb_sim[1]
-                #min_2d = camera.project3dToPixel(aabb_min)
-                #max_2d = camera.project3dToPixel(aabb_max)
-                # min_x = min(max_2d[0], min_2d[0])
-                # max_x = max(max_2d[0], min_2d[0])
-                # min_y = min(max_2d[1], min_2d[1])
-                # max_y = max(max_2d[1], min_2d[1])
-                # w = max_x - min_x
-                # h = max_y - min_y
-                # x = min_x + w/2
-                # y = min_y + h/2
-                # projected_area = x*y
-                # occlusion_score = visible_area / projected_area
 
         for subject_detection in visible_detections:
             for object_detection in visible_detections:
@@ -131,7 +122,6 @@ class PerspectiveEstimator(object):
 
         perspective_fps = cv2.getTickFrequency() / (cv2.getTickCount() - perspective_timer)
 
-        #cv_image_norm = cv2.normalize(real_depth_image, real_depth_image, 0, 255, cv2.NORM_MINMAX)
         viz_frame = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
 
         cv2.rectangle(viz_frame, (0, 0), (250, 40), (200, 200, 200), -1)
