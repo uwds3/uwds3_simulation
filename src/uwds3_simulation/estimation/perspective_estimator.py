@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import pybullet as p
 from pyuwds3.types.detection import Detection
-#from .static_saliency_estimator import StaticSaliencyEstimator
+from .static_saliency_estimator import StaticSaliencyEstimator
 from sensor_msgs.msg import CameraInfo
 from tf.transformations import quaternion_matrix, translation_matrix, translation_from_matrix
 
@@ -44,9 +44,11 @@ class HumanVisualModel(object):
 
 
 class PerspectiveEstimator(object):
-    def __init__(self, uwds_simulation):
+    def __init__(self, uwds_simulation, use_saliency=True):
         self.simulator = uwds_simulation
-        #self.saliency_estimator = StaticSaliencyEstimator()
+        self.use_saliency = use_saliency
+        if self.use_saliency is not False:
+            self.saliency_estimator = StaticSaliencyEstimator()
 
     def estimate(self, t, q, camera_info, target_position=None, occlusion_treshold=0.01, output_viz=True):
         perspective_timer = cv2.getTickCount()
@@ -85,8 +87,9 @@ class PerspectiveEstimator(object):
         near = HumanVisualModel.CLIPNEAR
         real_depth_image = far * near / (far - (far - near) * depth_image)
 
-        #saliency_map, saliency_heatmap = self.saliency_estimator.estimate(camera_image[2], real_depth_image)
-        #saliency_heatmap_resized = cv2.resize(saliency_heatmap, (width, height))
+        if self.use_saliency is not False:
+            saliency_map, saliency_heatmap = self.saliency_estimator.estimate(camera_image[2], real_depth_image)
+            saliency_heatmap_resized = cv2.resize(saliency_heatmap, (width, height))
 
         mask_image = camera_image[4]
         unique, counts = np.unique(np.array(mask_image).flatten(), return_counts=True)
@@ -117,16 +120,17 @@ class PerspectiveEstimator(object):
                     det = Detection(int(xmin), int(ymin), int(xmin+w), int(ymin+h), id, confidence, depth=depth)
                     visible_detections.append(det)
 
-        for subject_detection in visible_detections:
-            for object_detection in visible_detections:
-                if subject_detection != object_detection:
-                    pass #TODO create inference batch for egocentric relation detection
+        # for subject_detection in visible_detections:
+        #     for object_detection in visible_detections:
+        #         if subject_detection != object_detection:
+        #             pass #TODO create inference batch for egocentric relation detection
 
         perspective_fps = cv2.getTickFrequency() / (cv2.getTickCount() - perspective_timer)
 
         if output_viz is True:
             viz_frame = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
-            #viz_frame = cv2.addWeighted(saliency_heatmap_resized, 0.3, viz_frame, 0.7, 0)
+            if self.use_saliency is not False:
+                viz_frame = cv2.addWeighted(saliency_heatmap_resized, 0.4, viz_frame, 0.7, 0)
             cv2.rectangle(viz_frame, (0, 0), (250, 40), (200, 200, 200), -1)
             perspective_fps_str = "Perspective taking fps: {:0.1f}hz".format(perspective_fps)
             cv2.putText(viz_frame, "Nb detections: {}".format(len(visible_detections)), (5, 15),  cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)

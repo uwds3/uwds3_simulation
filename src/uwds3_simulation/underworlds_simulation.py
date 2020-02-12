@@ -99,27 +99,7 @@ class UnderworldsSimulation(object):
         if self.publish_markers is True:
             self.marker_publisher = rospy.Publisher("internal_simulation_viz", MarkerArray, queue_size=1)
 
-        if self.use_depth is True:
-            rospy.loginfo("[simulation] Subscribing to '/{}' topic...".format(self.tracks_topic))
-            self.tracks_sub = message_filters.Subscriber(self.tracks_topic, SceneChangesStamped)
-
-            rospy.loginfo("[simulation] Subscribing to '/{}' topic...".format(self.rgb_image_topic))
-            self.rgb_image_sub = message_filters.Subscriber(self.rgb_image_topic, Image)
-
-            rospy.loginfo("[simulation] Subscribing to '/{}' topic...".format(self.depth_image_topic))
-            self.depth_image_sub = message_filters.Subscriber(self.depth_image_topic, Image)
-
-            self.sync = message_filters.ApproximateTimeSynchronizer([self.tracks_sub, self.rgb_image_sub, self.depth_image_sub], 10, 0.1, allow_headerless=True)
-            self.sync.registerCallback(self.observation_callback)
-        else:
-            rospy.loginfo("[simulation] Subscribing to '/{}' topic...".format(self.tracks_topic))
-            self.tracks_sub = message_filters.Subscriber(self.tracks_topic, SceneChangesStamped)
-
-            rospy.loginfo("[simulation] Subscribing to '/{}' topic...".format(self.rgb_image_topic))
-            self.rgb_image_sub = message_filters.Subscriber(self.rgb_image_topic, Image)
-
-            self.sync = message_filters.ApproximateTimeSynchronizer([self.tracks_sub, self.rgb_image_sub], 10, 0.1, allow_headerless=True)
-            self.sync.registerCallback(self.observation_callback)
+        self.track_sub = rospy.Subscriber(self.tracks_topic, SceneChangesStamped, self.observation_callback)
 
         if self.publish_markers is True:
             self.simulation_timer = rospy.Timer(rospy.Duration(1.0/24.0), self.visualization_callback)
@@ -180,8 +160,7 @@ class UnderworldsSimulation(object):
 
     def add_shape(self, track):
         if track.has_shape is True:
-            if track.shape == PrimitiveShape.CYLINDER:
-                track.shape
+            if track.shape.type == PrimitiveShape.CYLINDER:
                 position = []
                 orientation = []
                 visual_shape_id = p.createVisualShape(p.GEOM_CYLINDER,
@@ -198,6 +177,8 @@ class UnderworldsSimulation(object):
                 if entity_id >= 0:
                     self.entity_id_map[track.id] = entity_id
                     self.reverse_entity_id_map[entity_id] = track.id
+            elif track.shape.type == PrimitiveShape.MESH:
+                pass
             else:
                 raise NotImplementedError("Only cylinder shapes for unknown objects supported at the moment.")
 
@@ -309,7 +290,7 @@ class UnderworldsSimulation(object):
                 marker_array.markers.append(marker)
         self.marker_publisher.publish(marker_array)
 
-    def observation_callback(self, tracks_msg, bgr_image_msg, depth_image_msg=None):
+    def observation_callback(self, tracks_msg):
         p.stepSimulation()
         for track in tracks_msg.changes.nodes:
             if track.has_camera is True and track.is_located is True:
